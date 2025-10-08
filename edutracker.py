@@ -1,14 +1,9 @@
 import streamlit as st
 import cv2
-import mediapipe as mp
 import time
 import pandas as pd
 import numpy as np
 from datetime import datetime
-
-# Initialize mediapipe face detection
-mp_face = mp.solutions.face_detection
-mp_draw = mp.solutions.drawing_utils
 
 # Streamlit UI setup
 st.set_page_config(page_title="EduPulse - AI Learning Energy Tracker", layout="wide")
@@ -17,7 +12,6 @@ st.markdown("Monitor your **study focus**, get **AI-based recommendations**, and
 
 # Initialize variables
 focus_log = []
-focus_start = None
 focused_time = 0
 distracted_time = 0
 frame_count = 0
@@ -27,12 +21,13 @@ start_button = st.button("Start Focus Session")
 
 if start_button:
     st.write("📸 Webcam starting... Please stay in front of your camera.")
-    stframe = st.empty()
-    face_detection = mp_face.FaceDetection(min_detection_confidence=0.6)
+    stframe = st.image([])
+
+    # Initialize OpenCV face detector
     cap = cv2.VideoCapture(0)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     session_start = time.time()
-    focus_start = time.time()
     
     while True:
         ret, frame = cap.read()
@@ -41,12 +36,13 @@ if start_button:
             break
 
         frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = face_detection.process(rgb)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
 
-        if results.detections:
+        if len(faces) > 0:
             focus_state = "Focused"
-            mp_draw.draw_detection(frame, results.detections[0])
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
         else:
             focus_state = "Distracted"
 
@@ -58,15 +54,15 @@ if start_button:
             distracted_time += 1
 
         # Update dashboard
-        stframe.image(frame, channels="BGR", use_column_width=True)
+        stframe.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
 
-        # Log focus data every 5 seconds
-        if frame_count % 150 == 0:  # approx 5 sec
+        # Log focus data every 5 seconds (approx)
+        if frame_count % 150 == 0:
             timestamp = datetime.now().strftime("%H:%M:%S")
             focus_log.append([timestamp, focus_state])
             st.write(f"🕒 {timestamp}: {focus_state}")
 
-        # Stop after 3 minutes (for demo)
+        # Stop after 3 minutes for demo
         if time.time() - session_start > 180:
             st.success("Session complete! Great job.")
             break
