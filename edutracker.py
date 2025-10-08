@@ -17,7 +17,8 @@ if "focus_log" not in st.session_state:
 if "focused_time" not in st.session_state:
     st.session_state.focused_time = 0
 if "distracted_time" not in st.session_state:
-    st.session_state.disimport streamlit as st
+    st.session_state.dis
+    import streamlit as st
 import pafy # optionally depends on youtube_dl
 import pandas as pd
 import subprocess
