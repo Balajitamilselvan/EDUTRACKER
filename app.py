@@ -1,140 +1,96 @@
-
 import streamlit as st
-import pafy  # depends on youtube_dl
-import pandas as pd
-import subprocess
-import pytube
-import whisper
-from bertopic import BERTopic
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
+import google.generativeai as genai
 
+# -----------------------------
+# MANUAL API KEY CONFIGURATION
+# -----------------------------
+API_KEY = "AIzaSyDdsOHvj5IL3YHU69-Pxq6muKGdcqzWYZY"  # Replace with your key
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
-# ------------------ TRANSCRIPTION FUNCTION ------------------ #
-def transcribe_asr(video_url):
-    st.info("🎧 Downloading and processing audio...")
-    yt_video = pytube.YouTube(video_url)
-    audio = yt_video.streams.get_by_itag(139)
-    audio.download("", "temp.mp4")
+# -----------------------------
+# SESSION HISTORY
+# -----------------------------
+if "history" not in st.session_state:
+    st.session_state.history = []
 
+# -----------------------------
+# HELPER FUNCTIONS
+# -----------------------------
+def get_response(prompt, difficulty="intermediate"):
+    difficulty_prompts = {
+        "beginner": "Explain this in simple terms for a beginner: ",
+        "intermediate": "Provide a detailed explanation of: ",
+        "advanced": "Give an in-depth technical analysis of: "
+    }
+    full_prompt = f"{difficulty_prompts[difficulty]}{prompt}"
     try:
-        subprocess.run(
-            ["ffmpeg", "-i", "temp.mp4", "-vn", "-ar", "44100", "-ac", "2", "-b:a", "192k", "temp.wav"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as e:
-        st.error(f"Error converting audio: {repr(e)}")
-
-    st.info("📝 Transcribing audio using Whisper...")
-    model = whisper.load_model("base.en")
-    result = model.transcribe("temp.wav")
-    st.success("✅ Transcription completed!")
-    return result["segments"]
-
-
-# ------------------ PREPROCESS FUNCTION ------------------ #
-def transcript_preprocess(video_url):
-    st.info("🧹 Cleaning and structuring transcript...")
-    filtered_text = [
-        {k: v for k, v in entry.items() if k in ["id", "start", "end", "text"]}
-        for entry in transcribe_asr(video_url)
-    ]
-
-    for entry in filtered_text:
-        entry["start"] = f"{int(entry['start']) // 60}m{int(entry['start']) % 60}s"
-        entry["end"] = f"{int(entry['end']) // 60}m{int(entry['end']) % 60}s"
-
-    df = pd.DataFrame(filtered_text).rename(
-        columns={"id": "ID", "start": "Start Timestamp", "end": "End Timestamp", "text": "Sentences"}
-    )
-
-    grouped_paragraphs, start_timestamps, end_timestamps = [], [], []
-    group_size = 5
-
-    for i in range(0, len(df), group_size):
-        end_index = min(i + group_size, len(df))
-        sentences = df["Sentences"].iloc[i:end_index].tolist()
-        grouped_paragraphs.append(" ".join(sentences))
-        start_timestamps.append(df["Start Timestamp"].iloc[i])
-        end_timestamps.append(df["End Timestamp"].iloc[end_index - 1])
-
-    grouped_df = pd.DataFrame(
-        {"Start Timestamp": start_timestamps, "End Timestamp": end_timestamps, "Paragraphs": grouped_paragraphs}
-    )
-    st.success("✅ Transcript preprocessing completed!")
-    return grouped_df
-
-
-# ------------------ TOPIC GENERATION FUNCTION ------------------ #
-def generate_video_topic_transcription(video_url):
-    st.info("🧠 Generating topic clusters...")
-    vectorizer = CountVectorizer(stop_words="english")
-    dim_model = PCA(n_components=1)
-    cluster_model = KMeans(n_clusters=1)
-
-    topic_model = BERTopic(
-        language="english",
-        verbose=True,
-        umap_model=dim_model,
-        hdbscan_model=cluster_model,
-        vectorizer_model=vectorizer,
-    )
-
-    grouped_df = transcript_preprocess(video_url)
-
-    def get_words(paragraph):
-        topics, _ = topic_model.fit_transform([paragraph])
-        words = topic_model.get_topic(0)
-        if words:
-            return [word[0] for word in words]
-        else:
-            return ["No clear topic detected"]
-
-    grouped_df["Keywords"] = grouped_df["Paragraphs"].apply(get_words)
-    st.success("✅ Topic extraction completed!")
-    return grouped_df
-
-
-# ------------------ STREAMLIT UI ------------------ #
-st.set_page_config(page_title="Lecture Video Topic Finder", layout="wide")
-st.title("🎥 YouTube Lecture Transcriber & Topic Extractor")
-
-video_url = st.text_input("Enter YouTube Lecture Video URL:")
-
-if video_url:
-    try:
-        video = pafy.new(video_url)
-        st.video(video_url)
-
-        st.subheader("📄 Video Details")
-        st.write(f"**Title:** {video.title}")
-        st.write(f"**Author:** {video.author}")
-        st.write(f"**Duration:** {video.duration}")
-
-        if st.button("Generate Transcript and Topics"):
-            struct_data = generate_video_topic_transcription(video_url)
-
-            col1, col2 = st.columns([2, 3])
-            for idx, row in struct_data.iterrows():
-                with col1:
-                    st.subheader(f"Topic [Section {idx + 1}]")
-                    keywords = ", ".join(row["Keywords"])
-                    timestamp = row["Start Timestamp"]
-                    timestamp_link = f"{video_url}&t={timestamp}"
-                    st.markdown(
-                        f'<a href="{timestamp_link}" target="_blank" '
-                        f'style="padding:5px; margin:5px; border:1px solid #ffafaf; '
-                        f'border-radius:5px; background-color:#ffc0cb; color:#ff0000;">{keywords}</a>',
-                        unsafe_allow_html=True,
-                    )
-
-                with col2:
-                    st.subheader(f"Section {idx + 1}")
-                    st.write(row["Paragraphs"])
-
+        response = model.generate_content(full_prompt)
+        return response.text
     except Exception as e:
-        st.error(f"❌ Error fetching video info: {repr(e)}")
+        return f"Error: {str(e)}"
 
+def save_to_history(question, answer):
+    st.session_state.history.append({"question": question, "answer": answer})
+
+# -----------------------------
+# STREAMLIT UI
+# -----------------------------
+st.set_page_config(page_title="AI Learning Buddy", page_icon="🤖", layout="wide")
+
+st.markdown(
+"""
+<style>
+h1 {color: #4a4a4a; text-align: center;}
+textarea, input, select {width: 100%; padding: 0.5rem; margin: 0.5rem 0; border-radius: 5px; border: 1px solid #ccc;}
+button {padding: 0.5rem 1rem; border-radius: 5px; background-color: #3B82F6; color: white; border: none;}
+button:hover {background-color: #2563eb;}
+.output {background: #f9fafb; padding: 1rem; border-radius: 5px; white-space: pre-wrap;}
+</style>
+""", unsafe_allow_html=True
+)
+
+tab1, tab2, tab3 = st.tabs(["📚 Learn", "🧩 Quiz", "📈 History"])
+
+with tab1:
+    st.header("Learn Something New")
+    user_prompt = st.text_area("What would you like to learn?", height=100)
+    difficulty = st.select_slider("Difficulty", ["beginner", "intermediate", "advanced"], value="intermediate")
+
+    if st.button("Get Answer", key="learn_button"):
+        if user_prompt:
+            with st.spinner("Generating response..."):
+                response = get_response(user_prompt, difficulty)
+                st.success("Here's your explanation:")
+                st.markdown(f"<div class='output'>{response}</div>", unsafe_allow_html=True)
+                save_to_history(user_prompt, response)
+        else:
+            st.warning("Please enter a topic.")
+
+with tab2:
+    st.header("Generate Quiz")
+    quiz_topic = st.text_input("Enter a topic for a quick quiz:")
+    difficulty_quiz = st.select_slider("Difficulty", ["beginner", "intermediate", "advanced"], value="intermediate", key="quiz_diff")
+
+    if st.button("Generate Quiz", key="quiz_button"):
+        if quiz_topic:
+            with st.spinner("Generating quiz..."):
+                quiz_prompt = f"Create a 3-question quiz about {quiz_topic} suitable for {difficulty_quiz} level"
+                quiz = get_response(quiz_prompt, difficulty_quiz)
+                st.success("Here's your quiz:")
+                st.markdown(f"<div class='output'>{quiz}</div>", unsafe_allow_html=True)
+        else:
+            st.warning("Please enter a topic for the quiz.")
+
+with tab3:
+    st.header("Learning History")
+    if not st.session_state.history:
+        st.info("No history available yet.")
+    else:
+        for i, item in enumerate(st.session_state.history):
+            with st.expander(f"Topic {i+1}", expanded=False):
+                st.markdown(f"<div class='output'><b>Question:</b> {item['question']}<br><b>Answer:</b> {item['answer']}</div>", unsafe_allow_html=True)
+
+        if st.button("Clear History", key="clear_history"):
+            st.session_state.history = []
+            st.success("History cleared successfully!")
