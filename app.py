@@ -45,7 +45,17 @@ h1 {color: #4a4a4a; text-align: center;}
 textarea, input, select {width: 100%; padding: 0.5rem; margin: 0.5rem 0; border-radius: 5px; border: 1px solid #ccc;}
 button {padding: 0.5rem 1rem; border-radius: 5px; background-color: #3B82F6; color: white; border: none;}
 button:hover {background-color: #2563eb;}
-.output {background: #f9fafb; padding: 1rem; border-radius: 5px; white-space: pre-wrap;}
+
+/* ✅ Dark theme box for responses */
+.output-dark {
+    background: #1e1e1e;
+    color: #f1f1f1;
+    padding: 1rem;
+    border-radius: 5px;
+    border: 1px solid #444;
+    white-space: pre-wrap;
+    font-family: Arial, monospace;
+}
 </style>
 """, unsafe_allow_html=True
 )
@@ -62,7 +72,7 @@ with tab1:
             with st.spinner("Generating response..."):
                 response = get_response(user_prompt, difficulty)
                 st.success("Here's your explanation:")
-                st.markdown(f"<div class='output'>{response}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='output-dark'>{response}</div>", unsafe_allow_html=True)
                 save_to_history(user_prompt, response)
         else:
             st.warning("Please enter a topic.")
@@ -78,7 +88,7 @@ with tab2:
                 quiz_prompt = f"Create a 3-question quiz about {quiz_topic} suitable for {difficulty_quiz} level"
                 quiz = get_response(quiz_prompt, difficulty_quiz)
                 st.success("Here's your quiz:")
-                st.markdown(f"<div class='output'>{quiz}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='output-dark'>{quiz}</div>", unsafe_allow_html=True)
         else:
             st.warning("Please enter a topic for the quiz.")
 
@@ -89,7 +99,7 @@ with tab3:
     else:
         for i, item in enumerate(st.session_state.history):
             with st.expander(f"Topic {i+1}", expanded=False):
-                st.markdown(f"<div class='output'><b>Question:</b> {item['question']}<br><b>Answer:</b> {item['answer']}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='output-dark'><b>Question:</b> {item['question']}<br><br><b>Answer:</b> {item['answer']}</div>", unsafe_allow_html=True)
 
         if st.button("Clear History", key="clear_history"):
             st.session_state.history = []
